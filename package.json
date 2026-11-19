@@ -1,0 +1,44 @@
+{
+  "name": "build-a-racetrack",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Build A Racetrack - build, drive and upgrade your own racetrack with five friends on Bloxity (Three.js + Colyseus)",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "build:shared": "npm run build --workspace @race/shared",
+    "dev": "npm run build:shared && concurrently -n server,client -c magenta,cyan \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm run dev --workspace @race/server",
+    "dev:client": "npm run dev --workspace @race/client",
+    "build": "npm run build:shared && npm run build --workspace @race/server && npm run build --workspace @race/client",
+    "build:client": "npm run build:shared && npm run build --workspace @race/client",
+    "build:server": "npm run build:shared && npm run build --workspace @race/server",
+    "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
+    "start": "npm run start --workspace @race/server",
+    "verify": "npm run build:server && node scripts/verify-track.mjs && node scripts/verify-movement.mjs && node scripts/verify-assets.mjs && node scripts/verify-persistence.mjs && node scripts/verify-offline.mjs",
+    "verify:movement": "npm run build -w shared && node scripts/verify-movement.mjs",
+    "verify:assets": "node scripts/verify-assets.mjs",
+    "verify:docker": "node scripts/verify-docker-context.mjs",
+    "verify:capacity": "node scripts/verify-capacity.mjs",
+    "verify:persistence": "npm run build:server && node scripts/verify-persistence.mjs",
+    "verify:multiplayer": "node scripts/verify-multiplayer.mjs",
+    "verify:stats": "npm run build:server && node scripts/verify-stats.mjs",
+    "size:client": "node scripts/build-size.mjs",
+    "verify:track": "npm run build:shared && node scripts/verify-track.mjs",
+    "verify:offline": "npm run build:server && node scripts/verify-offline.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "@colyseus/core": "0.16.24"
+  }
+}
