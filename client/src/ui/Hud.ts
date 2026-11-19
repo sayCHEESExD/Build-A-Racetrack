@@ -1,4 +1,4 @@
-import { fmtMoney, type BannerMessage, type ChatLineMessage, type NoticeKind } from '@race/shared';
+import { fmtMoney, packItem, type BannerMessage, type ChatLineMessage, type NoticeKind } from '@race/shared';
 import { el, escapeHtml } from './dom.js';
 import { ICONS, UI_IMAGES, img } from './icons.js';
 import { applyScale, injectRtStyles } from './rtStyles.js';
@@ -181,15 +181,17 @@ export class Hud {
 
     // ---- right: packs and the pass
     this.right = el('div', 'rt-right');
-    const pack = (name: string, sku: string, gems: number, art: string, key: string): HTMLButtonElement =>
-      button('rt-pack', `<span class="rt-ol" style="color:#ff8a2a">${name}</span><span class="art">${art}${kc(key)}</span><span class="gems rt-ol"><i class="rt-gem"></i>${gems}</span>`, () => actions.pack(sku));
-    const pass = button('rt-pass', `<span class="gems rt-ol" style="position:absolute;left:4px;top:-18px"><i class="rt-gem"></i>2</span><span class="rt-ol">2x Money</span><small class="rt-ol">[Permanent]</small>${kc('6')}`, () => actions.pack('pass_money2'));
-    this.right.append(pack('First Lap Pack', 'first_lap_pack', 6, '🎁', '4'), pack('Stunt Pack', 'stunt_pack', 129, '🏁', '5'), pass);
-    this.boostPack = el('div', 'rt-boostpack', `<b class="rt-ol">Boost Pack</b><small class="rt-ol">Go WAY too fast!</small><div class="gems rt-ol" style="color:#7dff6a"><i class="rt-gem"></i> 109</div>${kc('7')}`);
+    // Bought with in-game cash (PACKS in the economy table): no real-money purchases.
+    const price = (sku: string): string => fmtMoney(packItem(sku)?.price ?? 0);
+    const pack = (name: string, sku: string, art: string, key: string): HTMLButtonElement =>
+      button('rt-pack', `<span class="rt-ol" style="color:#ff8a2a">${name}</span><span class="art">${art}${kc(key)}</span><span class="price rt-ol" style="color:#7dff6a">${price(sku)}</span>`, () => actions.pack(sku));
+    const pass = button('rt-pass', `<span class="price rt-ol" style="position:absolute;left:4px;top:-18px;color:#7dff6a">${price('pass_money2')}</span><span class="rt-ol">2x Money</span><small class="rt-ol">[Permanent]</small>${kc('6')}`, () => actions.pack('pass_money2'));
+    this.right.append(pack('First Lap Pack', 'first_lap_pack', '🎁', '4'), pack('Stunt Pack', 'stunt_pack', '🏁', '5'), pass);
+    this.boostPack = el('div', 'rt-boostpack', `<b class="rt-ol">Boost Pack</b><small class="rt-ol">Go WAY too fast!</small><div class="price rt-ol" style="color:#7dff6a">${price('boost_pack')}</div>${kc('7')}`);
     this.boostPack.addEventListener('click', () => actions.pack('boost_pack'));
 
     // ---- prompt, notices, banner
-    this.promptBox = el('div', 'rt-prompt rt-hidden');
+    this.promptBox = tag(el('div', 'rt-prompt rt-hidden'), 'prompt');
     this.promptBox.addEventListener('click', (e) => {
       e.stopPropagation();
       actions.prompt();
@@ -224,7 +226,7 @@ export class Hud {
       b.addEventListener('pointerleave', up);
       return b;
     };
-    this.pedals.append(hold('red', 'BRAKE', 'brake'), hold('lime', 'GAS', 'gas'));
+    this.pedals.append(hold('red', 'BRAKE', 'brake'), tag(hold('lime', 'GAS', 'gas'), 'gas'));
     this.steerPad.append(hold('dark', '◀', 'left'), hold('dark', '▶', 'right'));
 
     // ---- build mode
@@ -245,7 +247,7 @@ export class Hud {
     this.bLabel = el('div', 'lbl rt-ol', '');
     const row = el('div', 'row');
     this.placeBtn = tag(button('green big', `<span class="rt-ol">Place</span>${kc('F')}`, () => actions.place()), 'place');
-    row.append(button('blue', `<span class="rt-ol">Rotate</span>${kc('R')}`, () => actions.rotate()), this.placeBtn, button('red', `<span class="rt-ol">Exit</span>${kc('Esc')}`, () => actions.exitBuild()));
+    row.append(button('blue', `<span class="rt-ol">Rotate</span>${kc('R')}`, () => actions.rotate()), this.placeBtn, tag(button('red', `<span class="rt-ol">Exit</span>${kc('Esc')}`, () => actions.exitBuild()), 'exit-build'));
     this.btools.append(this.bLabel, row);
 
     // ---- chat feed, top right, connection

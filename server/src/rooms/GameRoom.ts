@@ -41,7 +41,6 @@ import { reportIdentityOf, statRegistry, statValuesOf, type StatRow } from '../b
 import { serverConfig } from '../config/serverConfig.js';
 import { activeKeys } from '../game/ActiveKeys.js';
 import { RaceGame } from '../game/RaceGame.js';
-import { buxGrants } from '../progression/BuxGrants.js';
 import type { Player, PlayerSave, TrackSave } from '../game/Player.js';
 import { hasProgress, progressOf, storage, type ProfileFields, type StoredProfile } from '../persistence/index.js';
 import { profileStore } from '../progression/ProfileStore.js';
@@ -151,7 +150,6 @@ export class GameRoom extends Room<GameState> {
   private readonly sessions = new Map<string, Session>();
   private removeStatSource: (() => void) | null = null;
   private game!: RaceGame;
-  private grantClock = 0;
   private autosaveTimer = 0;
   /** Sessions being evicted: resolved once their leave-saves have landed. */
   private readonly leftWaiters = new Map<string, () => void>();
@@ -205,6 +203,7 @@ export class GameRoom extends Room<GameState> {
     });
     on<AdRewardMessage>(MessageType.AdReward, (p, m) => void this.onAdReward(p, m));
     on(MessageType.FreeGift, (p) => this.game.freeGift(p));
+    on<{ sku?: unknown }>(MessageType.BuyPack, (p, m) => this.game.buyPack(p, m.sku));
     on<{ plot?: unknown; code?: unknown }>(MessageType.Like, (p, m) => this.game.like(p, m));
     on<{ name?: unknown; desc?: unknown }>(MessageType.Publish, (p, m) => this.game.publish(p, m));
     on<{ tab?: unknown }>(MessageType.Browse, (p, m) => this.game.browse(p, m));
@@ -289,7 +288,6 @@ export class GameRoom extends Room<GameState> {
     this.sendAuthState(client, resolved.status);
     // A migrated guest's save is now the account's: write it under it at once.
     if (resolved.migrated && resolved.key) this.persist(client.sessionId, p);
-    if (resolved.accountKey) void this.claimGrants(client.sessionId);
     logger.info(SCOPE, `join ${client.sessionId} as ${describe(resolved)} plot=${player.plot} earned=${Math.floor(player.earned)}`);
   }
 
@@ -399,26 +397,6 @@ export class GameRoom extends Room<GameState> {
     this.persist(p.sessionId, p);
   }
 
-  // ---------------------------------------------------------------- Gems purchases
-
-  /** Pay out Gems purchases waiting for this account (recorded by the webhook), then save and settle them. */
-  private async claimGrants(sessionId: string): Promise<void> {
-    const session = this.sessions.get(sessionId);
-    if (!session?.accountKey || session.switching) return;
-    try {
-      const grants = await buxGrants.claim(session.accountKey);
-      if (!grants.length) return;
-      const p = this.game.players.get(sessionId);
-      if (!p) return;
-      for (const g of grants) this.game.grantSku(p, g.sku, g.money);
-      const player = this.state.players.get(sessionId);
-      if (player && session.key) await Promise.all([this.saveQuietly(session.key, player), this.saveSave(session.key, p.toSave())]);
-      await buxGrants.settle(grants.map((g) => g.transactionId));
-    } catch (error) {
-      logger.warn(SCOPE, `grant claim for ${sessionId} failed:`, error);
-    }
-  }
-
   // ---------------------------------------------------------------- identity / avatar / emotes
 
   private onSetAvatar(client: Client, message: SetAvatarMessage): void {
@@ -483,11 +461,6 @@ export class GameRoom extends Room<GameState> {
       if (player.emote && !player.grounded) player.emote = '';
     }
     this.tickSessions();
-    this.grantClock += delta;
-    if (this.grantClock >= 60) {
-      this.grantClock = 0;
-      for (const [sessionId, session] of this.sessions) if (session.accountKey) void this.claimGrants(sessionId);
-    }
     this.autosaveTimer += delta;
     if (this.autosaveTimer >= AUTOSAVE_SECONDS) {
       this.autosaveTimer = 0;

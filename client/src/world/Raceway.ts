@@ -33,6 +33,7 @@ import { studPlastic } from '../render/Studs.js';
 import { boulders, broadleaf, bush, flowers, palm, seeded, shade, type Rand } from './Nature.js';
 import { buildShopkeeper, OUTFITS } from './Shopkeeper.js';
 import { buildShop } from './Shops.js';
+import { Walkways } from './Walkways.js';
 import { ISLAND, buildTerrain } from './Terrain.js';
 import { FONT, LivePanel, fitText, hex, signBoard, strokeText } from './signs.js';
 
@@ -74,6 +75,7 @@ export class Raceway {
   private readonly signs: PlotSigns[] = [];
   private readonly boards = new Map<string, LivePanel>();
   private time = 0;
+  private readonly walkways: Walkways;
 
   constructor(scene: Scene) {
     scene.add(this.group);
@@ -90,6 +92,8 @@ export class Raceway {
     this.group.add(sea);
 
     this.road(b);
+    this.walkways = new Walkways(b);
+    this.group.add(this.walkways.group);
     for (const plot of PLOTS) this.plot(b, plot);
     for (const shop of SHOPS) this.stall(b, shop.kind);
     this.cliff(b, r);
@@ -536,6 +540,7 @@ export class Raceway {
 
   update(delta: number): void {
     this.time += delta;
+    this.walkways.update(delta);
     for (const k of this.keepers) k.avatar.update(delta);
   }
 }

@@ -67,6 +67,8 @@ them with the Spawn Car pad under the arch and the Pit Stop beside it, nameplate
 side of the arch. Base tiers open rows outward from the gate (`openRows`); locked rows at both ends are dimmed with
 an Expand Plot sign each. Tracks saved with the old corner gate (2,1) are shifted on load (`adoptLayout`).
 Shops (`world/Shops.ts`): Track Works depot, Decors garden boutique, Crate Vault; solids in `SCENERY_SOLIDS`.
+Moving walkways (`WALKWAYS`) down the middle of the main road, one each way (east lane north to the shops, west
+lane south to spawn): carried in the shared `stepBody` via `VoxelWorld.conveyors`, drawn by `world/Walkways.ts`.
 
 ## Track (`shared/src/track/track.ts`)
 
@@ -79,16 +81,16 @@ Items (`TRACK_ITEMS`) map to shapes; turns have two (R flips; the client auto-fl
 ## Server (`server/src/game/`)
 
 `RaceGame` (plots, building, decor, shops with per-player stock per restock epoch, crates, garage, base tiers,
-rebirth, runs, visits/likes, gallery, save slots, free gift, ad boost, Gems grants, offline earnings on join,
+rebirth, runs, visits/likes, gallery, save slots, free gift, ad boost, cash packs (`buyPack`), offline earnings on join,
 piles filling, `Coins` each second), `Player` (save v2: cash, tier, inventories, cars {lv, cond}, passes, slots,
 code, leftAt; track doc: pieces, decor, piles, likes, visits), `Gallery` (`published` collection, codes, cached
-lists). Gems: `progression/BuxGrants.ts` records webhook grants; the room claims them on join and every minute and
-applies `PACK_CONTENTS` (`grantSku`).
+lists). No real-money purchases: the 2x Money pass and the packs (`PACKS`) are bought with cash (`BuyPack`).
 
 ## Client (`client/src/`)
 
 `core/Game.ts` (modes walk / build / drive, prompts, build interactions, chase camera, network events),
-`core/Tutorial.ts` (the reference's first-run steps), `drive/Driver.ts` (local CarSim, reports), `world/`
+`core/Tutorial.ts` (first-run steps through the shop window, build mode and the first drive; steps back when undone,
+ends after the first drive) drawn by `ui/TutorialGuide.ts` (ring + hand on the `data-tut` button, world/edge arrows, keycap), `drive/Driver.ts` (local CarSim, reports), `world/`
 (`Raceway` static world, `Terrain`, `TrackMesh`, `TrackView` per-plot meshes / labels / cash stacks / ghost /
 cars, `CarModel` 14 car styles, `DecorModels`, `Nature`/`Wild` ported), `ui/` (`Hud`, `Windows` every shop and
 menu, `Thumbs` 3D card thumbnails, `rtStyles` `rt-` classes with one unit `--u`).

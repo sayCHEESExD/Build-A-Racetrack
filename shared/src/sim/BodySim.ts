@@ -465,6 +465,14 @@ export const stepBody = (motion: BodyMotion, input: MovementInput, params: SimPa
 
   let dx = m.vx * dt;
   let dz = m.vz * dt;
+  // Standing on a moving walkway: carried along with it, on top of your own walking.
+  if (m.grounded && !params.fly) {
+    const belt = world.conveyorAt(m.x, m.z);
+    if (belt) {
+      dx += belt.vx * dt;
+      dz += belt.vz * dt;
+    }
+  }
   // Sneaking on the ground: never walk off an edge (the bridging stance).
   if (m.crouched && m.grounded) {
     const step = 0.05;

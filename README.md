@@ -40,10 +40,8 @@ Client on http://localhost:6181, server on :3681. See `CLAUDE.md` for the rules,
 budget, the zip) -> server (image `ghcr.io/<owner>/build-racetrack-server:<channel>-<sha>`, rolled on Legion with
 `seatCap` 6) -> frontend (the zip to Boxity Hosting). One-time setup: create the game `build-racetrack` on
 https://hosting.bloxity.io, add the `LEGION_DEPLOY_TOKEN` repository secret, make the GHCR package
-`build-racetrack-server` public after the first run, point the purchase webhook at
-`https://build-racetrack.host.bloxity.io/bloxity/bux` (dev: `build-racetrack.dev.host.bloxity.io`), and create the
-Gems SKUs (`pass_money2`, `first_lap_pack`, `stunt_pack`, `boost_pack`, `cash_small`, `cash_large`) in the
-portal catalogue. Stage is not deployed: Boxity does not document a stage Legion deploy route yet.
+`build-racetrack-server` public after the first run. There are no purchases (no Gems SKUs or
+webhook): packs and the 2x Money pass are bought with in-game cash. Stage is not deployed: Boxity does not document a stage Legion deploy route yet.
 
 | | Game page | Backend health |
 | --- | --- | --- |

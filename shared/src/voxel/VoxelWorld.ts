@@ -60,6 +60,16 @@ class Chunk {
  * It also holds the EXTRA SOLIDS - furniture that bodies bump into - so the
  * body simulation asks one object what is in the way.
  */
+/** A moving walkway: a ground rectangle that carries whoever stands on it at (vx, vz) units a second. */
+export interface Conveyor {
+  readonly minX: number;
+  readonly maxX: number;
+  readonly minZ: number;
+  readonly maxZ: number;
+  readonly vx: number;
+  readonly vz: number;
+}
+
 export class VoxelWorld {
   readonly minX: number;
   readonly minZ: number;
@@ -80,6 +90,14 @@ export class VoxelWorld {
   /** Extra solids by the 4x4 column they touch. */
   private readonly extraCells = new Map<number, Set<number>>();
   readonly reader = (x: number, y: number, z: number): number => this.get(x, y, z);
+  /** Moving walkways: a body standing on one is carried along (`stepBody`). */
+  conveyors: readonly Conveyor[] = [];
+
+  /** The belt under a point, if any. */
+  conveyorAt(x: number, z: number): Conveyor | null {
+    for (const c of this.conveyors) if (x >= c.minX && x <= c.maxX && z >= c.minZ && z <= c.maxZ) return c;
+    return null;
+  }
 
   constructor(bounds: WorldBounds) {
     this.minX = bounds.minX;

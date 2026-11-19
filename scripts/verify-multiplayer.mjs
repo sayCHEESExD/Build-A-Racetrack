@@ -18,7 +18,7 @@
  * Usage: ENDPOINT=ws://localhost:3681 node scripts/verify-multiplayer.mjs
  */
 import { Client } from 'colyseus.js';
-import { ARENA_INDEX, CarSim, DEFAULT_SERVER_PORT, MessageType, PLOTS, ROOM_NAME, TrackPath, plotDef, trackItem, traceChain, unpackPieces, withStart } from '../shared/dist/index.js';
+import { ARENA_INDEX, CarSim, DEFAULT_SERVER_PORT, MessageType, PLOTS, ROOM_NAME, TrackPath, packItem, plotDef, trackItem, traceChain, unpackPieces, withStart } from '../shared/dist/index.js';
 
 const ENDPOINT = process.env.ENDPOINT ?? `ws://localhost:${DEFAULT_SERVER_PORT}`;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -143,6 +143,20 @@ const main = async () => {
   // Build a longer track with the dev hooks: a bump and a finish.
   a.room.send('dev', { cash: 2_000_000, tier: 3, items: 4 });
   await sleep(250);
+  // ---- packs are bought with in-game cash (no real-money purchases)
+  {
+    const cash0 = a.me().cash;
+    const boost0 = a.profile.inventory.boost ?? 0;
+    a.room.send(MessageType.BuyPack, { sku: 'boost_pack' });
+    await sleep(300);
+    check(a.me().cash === cash0 - packItem('boost_pack').price, `the Boost Pack costs ${packItem('boost_pack').price} cash`);
+    check((a.profile.inventory.boost ?? 0) === boost0 + 6, 'it gives 6 Boost Pad tracks');
+    a.room.send(MessageType.BuyPack, { sku: 'cash_large' });
+    await sleep(200);
+    check(a.me().cash === cash0 - packItem('boost_pack').price, 'an unknown pack costs and gives nothing');
+    a.room.send('dev', { cash: 2_000_000 });
+    await sleep(200);
+  }
   for (const k of ['turn', 'straight', 'bump', 'straight', 'straight', 'climb', 'straight', 'drop', 'straight', 'finish']) await a.place(k);
   const pieces = a.mine();
   check(pieces.length >= 12, `a longer track is built (${pieces.length} pieces)`);

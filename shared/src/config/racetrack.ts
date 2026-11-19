@@ -461,32 +461,36 @@ export const FREE_GIFT_SECONDS = 600;
 export const FREE_GIFT_INCOME_SECONDS = 120;
 export const FREE_GIFT_MIN = 100;
 
-/** Gems catalogue (SKUs must exist in the Bloxity portal for this game's slug). */
-export interface GemItem {
+/**
+ * PACKS AND THE PASS, bought with in-game cash (there are no real-money
+ * purchases). Priced a little under their contents; a pack whose pieces need
+ * a Base tier unlocks with it, like the shop.
+ */
+export interface PackItem {
   readonly sku: string;
   readonly name: string;
   readonly blurb: string;
-  readonly gems: number;
-  readonly kind: 'pass' | 'pack' | 'cash';
+  /** In-game cash. */
+  readonly price: number;
+  /** Base tier needed to buy it. */
+  readonly tier: number;
+  readonly kind: 'pass' | 'pack';
 }
 
-export const GEM_ITEMS: readonly GemItem[] = [
-  { sku: 'pass_money2', name: '2x Money', blurb: 'Double every dollar, forever.', gems: 199, kind: 'pass' },
-  { sku: 'first_lap_pack', name: 'First Lap Pack', blurb: '2 Turbo Crates + $1.5K cash.', gems: 6, kind: 'pack' },
-  { sku: 'stunt_pack', name: 'Stunt Pack', blurb: '4 Bump, 2 Ramp Jump and 2 Loop tracks.', gems: 129, kind: 'pack' },
-  { sku: 'boost_pack', name: 'Boost Pack', blurb: '6 Boost Pad tracks. Go WAY too fast!', gems: 109, kind: 'pack' },
-  { sku: 'cash_small', name: 'Bag of Cash', blurb: '$25K cash.', gems: 49, kind: 'cash' },
-  { sku: 'cash_large', name: 'Vault of Cash', blurb: '$500K cash.', gems: 399, kind: 'cash' },
+export const PACKS: readonly PackItem[] = [
+  { sku: 'pass_money2', name: '2x Money', blurb: 'Double every dollar, forever.', price: 2_500_000, tier: 0, kind: 'pass' },
+  { sku: 'first_lap_pack', name: 'First Lap Pack', blurb: '2 Turbo Crates + $1.5K cash.', price: 9_500, tier: 0, kind: 'pack' },
+  { sku: 'stunt_pack', name: 'Stunt Pack', blurb: '4 Bump, 2 Ramp Jump and 2 Loop tracks.', price: 160_000, tier: 3, kind: 'pack' },
+  { sku: 'boost_pack', name: 'Boost Pack', blurb: '6 Boost Pad tracks. Go WAY too fast!', price: 95_000, tier: 2, kind: 'pack' },
 ];
+export const packItem = (sku: string): PackItem | undefined => PACKS.find((p) => p.sku === sku);
 
-/** What each pack holds: track items, crates opened at once, cash. */
+/** What each pack holds: track items, crates opened at once, cash, the pass. */
 export const PACK_CONTENTS: Readonly<Record<string, { items?: Record<string, number>; crates?: Record<string, number>; cash?: number; pass?: 'money2' }>> = {
   pass_money2: { pass: 'money2' },
   first_lap_pack: { crates: { turbo: 2 }, cash: 1500 },
   stunt_pack: { items: { bump: 4, jump: 2, loop: 2 } },
   boost_pack: { items: { boost: 6 } },
-  cash_small: { cash: 25_000 },
-  cash_large: { cash: 500_000 },
 };
 
 // ---------------------------------------------------------------- the gallery

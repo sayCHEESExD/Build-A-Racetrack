@@ -77,6 +77,7 @@ import { AdScreens } from '../ui/AdScreens.js';
 import { logger } from '../util/logger.js';
 import { TrackView } from '../world/TrackView.js';
 import { Tutorial } from './Tutorial.js';
+import { TutorialGuide } from '../ui/TutorialGuide.js';
 
 const TUTORIAL_DONE_KEY = 'racetrack.tutorialDone';
 const SCOPE = 'Game';
@@ -88,6 +89,8 @@ const DRIVE_DISTANCE = 9.5;
 const P = new Vector3();
 const DIR = new Vector3();
 const SEAT = new Vector3();
+const PROJ = new Vector3();
+const PROJ_DIR = new Vector3();
 const CAMT = new Vector3();
 const Q = new Quaternion();
 const FLAT = new Euler(0, 0, 0, 'YXZ');
@@ -209,7 +212,7 @@ export class Game {
       login: () => {
         if (!this.bloxity.isLoggedIn()) void this.bloxity.showAuthPopup();
       },
-      pack: (sku) => void this.buyGems(sku),
+      pack: (sku) => this.buyPack(sku),
     });
     const ui = this.hud.root;
     this.windows = new Windows(ui, {
@@ -222,7 +225,7 @@ export class Game {
       rebirth: () => this.network.rebirth(),
       freeGift: () => this.network.freeGift(),
       watchAd: () => void this.watchAd(),
-      gems: (sku) => void this.buyGems(sku),
+      pack: (sku) => this.buyPack(sku),
       browse: (tab) => this.network.browse(tab),
       visit: (code) => {
         this.network.visit(code);
@@ -373,11 +376,26 @@ export class Game {
   async initialise(): Promise<void> {
     await playerModelLoader.load();
     this.view = new TrackView(this.sceneManager);
+    const guide = new TutorialGuide(() => {
+      // Skip: gone for good.
+      this.tutorial?.stop();
+      this.markTutorial();
+      this.hud.setHint('');
+    });
     this.tutorial = new Tutorial(this.sceneManager.scene, {
-      hint: (html) => this.hud.setHint(html),
-      glow: (names) => {
-        this.hud.glow(names);
-        for (const e of this.windows.root.querySelectorAll<HTMLElement>('[data-tut]')) e.classList.toggle('rt-glow', names.includes(e.dataset['tut'] ?? ''));
+      view: (v) => guide.show(v),
+      project: (x, y, z) => {
+        const cam = this.camera.camera;
+        // In front or behind by the view direction (a far point beyond the far plane projects past z = 1 too).
+        cam.getWorldDirection(PROJ_DIR);
+        const ahead = (x - cam.position.x) * PROJ_DIR.x + (y - cam.position.y) * PROJ_DIR.y + (z - cam.position.z) * PROJ_DIR.z > 0;
+        PROJ.set(x, y, z).project(cam);
+        const onScreen = ahead && Math.abs(PROJ.x) <= 0.92 && Math.abs(PROJ.y) <= 0.92;
+        // Behind the camera the projection mirrors: flip it so the edge arrow still points the right way.
+        const flip = ahead ? 1 : -1;
+        const p = this.player?.position;
+        const distance = p ? Math.hypot(x - p.x, z - p.z) : 0;
+        return { x: ((flip * PROJ.x + 1) / 2) * window.innerWidth, y: ((1 - flip * PROJ.y) / 2) * window.innerHeight, onScreen, distance };
       },
       finished: () => {
         this.markTutorial();
@@ -493,21 +511,10 @@ export class Game {
     }
   }
 
-  private async buyGems(sku: string): Promise<void> {
+  /** A pack or the 2x Money pass, for in-game cash: the server checks the price, the tier and the cash. */
+  private buyPack(sku: string): void {
     this.sfx.play('click', 0.4);
-    if (!this.bloxity.available) {
-      this.hud.notice('info', 'Gem purchases are available when playing on Bloxity');
-      return;
-    }
-    if (!this.bloxity.isLoggedIn()) {
-      // Inside Boxity its toolbar signs players in (never our own popup there).
-      if (this.bloxity.embedded) this.hud.notice('info', 'Sign in with the Boxity toolbar to buy with Gems');
-      else void this.bloxity.showAuthPopup();
-      return;
-    }
-    const r = await this.bloxity.requestPurchase(sku);
-    if (r.success) this.hud.notice('good', 'Purchase complete! It arrives in a moment.');
-    else if (r.error) this.hud.notice('bad', r.error);
+    this.network.buyPack(sku);
   }
 
   /**
@@ -1178,6 +1185,14 @@ export class Game {
     }));
   }
 
+  /** The glowing end of my track in the world, for the tutorial's arrow. */
+  private tutorialEnd(end: { x: number; z: number; y: number } | null): { x: number; y: number; z: number } | null {
+    const plot = PLOTS[this.myPlot];
+    if (!end || !plot) return null;
+    const [x, z] = toWorld(plot.frame, end.x * TILE + TILE / 2, end.z * TILE + TILE / 2);
+    return { x, y: end.y * LEVEL_H, z };
+  }
+
   private updateTutorial(delta: number): void {
     const t = this.tutorial;
     const l = this.local;
@@ -1206,6 +1221,8 @@ export class Game {
       window: this.windows.which,
       driving: this.driving,
       runs: l.rides,
+      end: this.tutorialEnd(track.chain.end),
+      touch: this.hud.touchActive,
     });
   }
 
@@ -1258,7 +1275,7 @@ export class Game {
     const sku = PACK_KEYS[k];
     if (sku) {
       this.input.look.releaseLock();
-      void this.buyGems(sku);
+      this.buyPack(sku);
       return;
     }
     if (this.panelOpen) return;

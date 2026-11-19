@@ -50,6 +50,8 @@ export const MessageType = {
   Building: 'building',
   AdReward: 'adReward',
   FreeGift: 'freeGift',
+  /** Buy a pack or the 2x Money pass with cash ({ sku }). */
+  BuyPack: 'buyPack',
   Like: 'like',
   Publish: 'publish',
   Browse: 'browse',

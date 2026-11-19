@@ -457,6 +457,11 @@ export class NetworkClient {
     this.send(MessageType.FreeGift, {});
   }
 
+  /** Buy a pack or the 2x Money pass with cash. */
+  buyPack(sku: string): void {
+    this.send(MessageType.BuyPack, { sku });
+  }
+
   like(target: { plot?: number; code?: string }): void {
     this.send(MessageType.Like, target);
   }

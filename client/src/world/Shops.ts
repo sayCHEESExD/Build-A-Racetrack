@@ -86,7 +86,7 @@ const trackShop = (b: PartBuilder, s: ShopSpot): void => {
   // Corrugated ribs down the walls (back, both sides).
   for (let i = 0; i <= 12; i += 1) b.box(0.18, 7.2, 0.2, RIB, 'smooth', P(-W + 0.3 + i * ((W * 2 - 0.6) / 12), 3.6, -2.95));
   for (const sx of [-1, 1]) {
-    b.box(0.5, 6.2, 4.6, WALL, 'stud', P(sx * (W - 0.25), 3.1, -0.8));
+    b.box(0.5, 6.2, 4.05, WALL, 'stud', P(sx * (W - 0.27), 3.1, -0.925));
     for (let i = 0; i < 5; i += 1) b.box(0.12, 6.2, 0.18, RIB, 'smooth', P(sx * (W + 0.02), 3.1, -2.8 + i * 1.0));
   }
   // A roll-up garage door on the back wall, half open, the workshop lit inside.
@@ -105,7 +105,8 @@ const trackShop = (b: PartBuilder, s: ShopSpot): void => {
   stripes(b, s, -W - 0.4, W + 0.4, 6.45, 1.86, 0.5, 0.14, 14, HAZARD_Y, HAZARD_K);
   b.box(W * 2 + 1, 0.2, 0.3, GREEN, 'smooth', P(0, 6.8, 1.85));
   // Posts at the front corners (green, studded) and the counter with a hazard band and a road-paint top.
-  for (const sx of [-1, 1]) b.box(0.8, 6.2, 0.8, GREEN, 'stud', P(sx * (W - 0.4), 3.1, 1.5));
+  // Corner posts a touch wider than the walls' line, so no face of theirs shares a plane with a wall's.
+  for (const sx of [-1, 1]) b.box(0.9, 6.2, 0.8, GREEN, 'stud', P(sx * (W - 0.4), 3.1, 1.5));
   b.box(W * 2 - 1.6, 1.0, 1.2, 0x5a6070, 'stud', P(0, 0.5, 1.5));
   stripes(b, s, -W + 0.8, W - 0.8, 0.62, 2.12, 0.32, 0.06, 16, HAZARD_Y, HAZARD_K);
   b.box(W * 2 - 1.2, 0.2, 1.5, 0x3c4260, 'stud', P(0, 1.1, 1.5));
@@ -176,7 +177,7 @@ const decorShop = (b: PartBuilder, s: ShopSpot): void => {
   // Garden path and a cottage body behind the back wall.
   b.box(W * 2 + 1, 0.22, 13, 0xe4dfd2, 'stud', P(0, 0.11, -3.2));
   b.box(W * 2, 5.8, 6.4, WALL, 'stud', P(0, 2.9, -6.2));
-  for (const sx of [-1, 1]) b.box(0.45, 5.2, 4.4, WALL, 'stud', P(sx * (W - 0.22), 2.6, -0.8));
+  for (const sx of [-1, 1]) b.box(0.45, 5.2, 4.1, WALL, 'stud', P(sx * (W - 0.245), 2.6, -0.9));
   // White corner boards and a skirting.
   for (const sx of [-1, 1]) for (const dz of [1.5, -9.3]) b.box(0.5, 5.8, 0.5, TRIM, 'smooth', P(sx * (W - 0.1), 2.9, dz));
   b.box(W * 2 + 0.3, 0.5, 0.3, TRIM, 'smooth', P(0, 0.25, -2.95));
@@ -220,7 +221,7 @@ const decorShop = (b: PartBuilder, s: ShopSpot): void => {
   }
   // Posts (white, a green vine curling up each) and the counter: a planter box full of flowers.
   for (const sx of [-1, 1]) {
-    b.box(0.6, 5, 0.6, TRIM, 'smooth', P(sx * (W - 0.3), 2.5, 1.5));
+    b.box(0.7, 5, 0.6, TRIM, 'smooth', P(sx * (W - 0.3), 2.5, 1.5));
     for (let i = 0; i < 6; i += 1) b.add(ball(0.22, 6), 0x4ed838, 'leaf', P(sx * (W - 0.3) + Math.sin(i * 1.9) * 0.34, 0.6 + i * 0.75, 1.5 + Math.cos(i * 1.9) * 0.34));
   }
   b.box(W * 2 - 1.2, 1.0, 1.2, 0x8a5428, 'stud', P(0, 0.5, 1.5));
@@ -270,18 +271,28 @@ const decorShop = (b: PartBuilder, s: ShopSpot): void => {
 
 /** A crate: planked faces, a darker frame on its edges, a glowing band for the rarer ones. */
 const crate = (b: PartBuilder, x: number, y: number, z: number, size: number, color: number, ry = 0, glow = 0): void => {
-  b.box(size, size, size, color, 'stud', { x, y: y + size / 2, z, ry });
+  // No two faces share a plane (that is what flickered): the planked body is set IN from the frame, the
+  // frame's posts and rails are one colour where they overlap, and the glow band stands well proud.
   const e = size * 0.12;
+  const inset = Math.max(0.04, size * 0.05);
   const dark = shade(color, 0.6);
   const c = Math.cos(ry);
   const sn = Math.sin(ry);
-  for (const [ox, oz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
-    const lx = (ox * (size - e)) / 2;
-    const lz = (oz * (size - e)) / 2;
-    b.box(e * 1.1, size + 0.02, e * 1.1, dark, 'smooth', { x: x + lx * c + lz * sn, y: y + size / 2, z: z - lx * sn + lz * c, ry });
+  const put = (lx: number, ly: number, lz: number, w: number, h: number, d: number, col: number, kind: PartKind): void => {
+    b.box(w, h, d, col, kind, { x: x + lx * c + lz * sn, y: y + ly, z: z - lx * sn + lz * c, ry });
+  };
+  put(0, size / 2, 0, size - inset * 2, size - inset * 2, size - inset * 2, color, 'stud');
+  const o = (size - e) / 2;
+  // Corner posts, full height.
+  for (const [ox, oz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) put(ox * o, size / 2, oz * o, e, size, e, dark, 'smooth');
+  // Top and bottom rails round the four edges (between the posts).
+  for (const ly of [e / 2, size - e / 2]) {
+    for (const side of [-1, 1]) {
+      put(0, ly, side * o, size - e * 2, e, e, dark, 'smooth');
+      put(side * o, ly, 0, e, e, size - e * 2, dark, 'smooth');
+    }
   }
-  for (const oy of [0, size]) b.box(size + 0.04, e, size + 0.04, dark, 'smooth', { x, y: y + oy + (oy ? -e / 2 : e / 2), z, ry });
-  if (glow) b.box(size + 0.06, e * 0.8, size + 0.06, glow, 'glow', { x, y: y + size / 2, z, ry });
+  if (glow) put(0, size / 2, 0, size + 0.1, e * 0.8, size + 0.1, glow, 'glow');
 };
 
 const crateShop = (b: PartBuilder, s: ShopSpot, group: Group): void => {
@@ -296,7 +307,7 @@ const crateShop = (b: PartBuilder, s: ShopSpot, group: Group): void => {
   for (let i = -2; i <= 2; i += 1) b.box(0.06, 0.04, 12.6, 0x4a5060, 'smooth', P(i * 2.3, 0.26, -3.2));
   b.box(W * 2, 6.6, 6.6, STEEL, 'stud', P(0, 3.3, -6.3));
   for (const sx of [-1, 1]) {
-    b.box(0.5, 6.0, 4.6, STEEL, 'stud', P(sx * (W - 0.25), 3.0, -0.8));
+    b.box(0.5, 6.0, 4.05, STEEL, 'stud', P(sx * (W - 0.27), 3.0, -0.925));
     // Riveted plates down the sides.
     for (let j = 0; j < 3; j += 1) {
       b.box(0.08, 1.7, 4.2, PLATE, 'smooth', P(sx * (W + 0.02), 1.1 + j * 1.9, -0.8));
@@ -319,8 +330,8 @@ const crateShop = (b: PartBuilder, s: ShopSpot, group: Group): void => {
   b.box(W * 2 + 0.6, 0.12, 0.2, PURPLE, 'glow', P(0, 6.05, 1.8));
   // Posts: steel girders with gold caps; the counter: a steel chest with a gold lid lip.
   for (const sx of [-1, 1]) {
-    b.box(0.8, 6.0, 0.8, 0x1d2b55, 'stud', P(sx * (W - 0.4), 3.0, 1.5));
-    b.box(0.95, 0.25, 0.95, GOLD, 'smooth', P(sx * (W - 0.4), 6.0, 1.5));
+    b.box(0.9, 6.0, 0.8, 0x1d2b55, 'stud', P(sx * (W - 0.4), 3.0, 1.5));
+    b.box(1.05, 0.25, 0.95, GOLD, 'smooth', P(sx * (W - 0.4), 6.0, 1.5));
   }
   b.box(W * 2 - 1.6, 1.0, 1.2, STEEL, 'stud', P(0, 0.5, 1.5));
   b.box(W * 2 - 1.3, 0.18, 1.45, GOLD, 'smooth', P(0, 1.08, 1.5));

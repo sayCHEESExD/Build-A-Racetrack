@@ -10,7 +10,6 @@ import type {
   LegionFriend,
   LegionPlayerEvent,
   LegionProportions,
-  LegionPurchaseResult,
   LegionRewardedResult,
   LegionSdk,
   LegionUser,
@@ -193,7 +192,7 @@ export class Bloxity {
    * Initialise ONCE, before any namespace is used.
    *
    * The slug is passed even when embedded, where the portal supplies one
-   * anyway: standalone hosting and every Bux purchase are resolved by it, and
+   * anyway: standalone hosting and sign-in are resolved by it, and
    * a build that only worked inside the iframe would be a build that stopped
    * working the moment it was hosted on its own domain.
    */
@@ -206,7 +205,7 @@ export class Bloxity {
       logger.warn(
         SCOPE,
         'SDK not present - running without the portal. Auth, friends, ' +
-          'cosmetics and Bux are unavailable; the game itself is unaffected.',
+          'cosmetics are unavailable; the game itself is unaffected.',
       );
       // The auth UI still needs telling, or it would sit on "loading" for ever.
       this.emitUser(null);
@@ -408,33 +407,7 @@ export class Bloxity {
     guard('portal.showMenu', (api) => api.portal?.showMenu?.(lockCursorOnResume));
   }
 
-  // -------------------------------------------------------------------- bux
-
-  /**
-   * Ask for a purchase.
-   *
-   * The SKU and nothing else: the PRICE lives in the server catalogue, keyed
-   * by the game slug. A price passed from here would be a price a client could
-   * choose, which is the one thing a payment path must never allow.
-   *
-   * Granting is the SERVER's job too - Bloxity calls this game's webhook and
-   * the room credits the profile. What comes back here is only good enough to
-   * tell the player what happened.
-   */
-  async requestPurchase(
-    sku: string,
-    metadata?: Record<string, unknown>,
-  ): Promise<LegionPurchaseResult> {
-    const result = await guard('bux.requestPurchase', (api) =>
-      (api.gems ?? api.bux)?.requestPurchase?.(sku, metadata),
-    );
-    return result ?? { success: false, error: 'Bux are unavailable right now.' };
-  }
-
-  async getBuxBalance(): Promise<number | null> {
-    const balance = await guard('gems.getBalance', (api) => (api.gems ?? api.bux)?.getBalance?.());
-    return typeof balance === 'number' ? balance : null;
-  }
+  // No purchases: everything in this game is bought with in-game cash.
 
   // ------------------------------------------------------------ death screen
 

@@ -20,6 +20,7 @@ import {
   OFFLINE_MIN_SECONDS,
   OFFLINE_SHARE,
   PACK_CONTENTS,
+  packItem,
   PLOTS,
   REBIRTH_TIER,
   RESTOCK_SECONDS,
@@ -608,16 +609,22 @@ export class RaceGame {
     this.sendProfile(p);
   }
 
-  /** A paid Gems purchase (verified by the webhook, claimed by the room). */
-  grantSku(p: Player, sku: string, money: number): void {
+  /** Buy a pack or the 2x Money pass with in-game cash (priced only in `PACKS`). */
+  buyPack(p: Player, sku: unknown): void {
+    if (typeof sku !== 'string' || !p.spend(2)) return;
+    const item = packItem(sku);
     const pack = PACK_CONTENTS[sku];
-    if (pack?.pass === 'money2') p.pass2x = true;
-    for (const [key, n] of Object.entries(pack?.items ?? {})) p.give(key, n);
-    for (const [key, n] of Object.entries(pack?.crates ?? {})) for (let i = 0; i < n; i += 1) this.openCrate(p, key);
-    const cash = (pack?.cash ?? 0) || money;
-    if (cash > 0) this.earn(p, cash, '');
+    if (!item || !pack) return;
+    if (item.kind === 'pass' && p.pass2x) return this.ctx.notify(p.sessionId, 'info', `You already have ${item.name}!`);
+    if (p.state.tier < item.tier) return this.deny(p, `Base Upgrade to ${baseTier(item.tier).name} to unlock the ${item.name}`);
+    if (p.state.cash < item.price) return this.deny(p, `You need ${fmtMoney(item.price - p.state.cash)} more for the ${item.name}`);
+    p.state.cash -= item.price;
+    if (pack.pass === 'money2') p.pass2x = true;
+    for (const [key, n] of Object.entries(pack.items ?? {})) p.give(key, n);
+    for (const [key, n] of Object.entries(pack.crates ?? {})) for (let i = 0; i < n; i += 1) this.openCrate(p, key);
+    if (pack.cash) this.earn(p, pack.cash, '');
     this.recompute(p);
-    this.bought(p, 'Purchase received - thank you!');
+    this.bought(p, `${item.name} bought!`);
   }
 
   // ---------------------------------------------------------------- driving

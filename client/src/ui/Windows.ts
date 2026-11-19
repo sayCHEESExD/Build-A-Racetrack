@@ -5,7 +5,7 @@ import {
   CRATES,
   DECORS,
   DECOR_CATEGORIES,
-  GEM_ITEMS,
+  PACKS,
   MAX_REBIRTHS,
   MAX_TIER,
   RARITIES,
@@ -73,7 +73,8 @@ export interface WindowActions {
   rebirth(): void;
   freeGift(): void;
   watchAd(): void;
-  gems(sku: string): void;
+  /** Buy a pack or the 2x Money pass with cash. */
+  pack(sku: string): void;
   browse(tab: GalleryTab): void;
   visit(code: string): void;
   like(code: string): void;
@@ -88,7 +89,6 @@ const clock = (ms: number): string => {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 };
 const hms = (s: number): string => `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
-const gem = '<i class="rt-gem"></i>';
 
 /** A little top-down map of a packed track, for gallery cards. */
 const drawMini = (canvas: HTMLCanvasElement, packed: number[]): void => {
@@ -159,14 +159,24 @@ export class Windows {
     this.root.addEventListener('wheel', (e) => e.stopPropagation());
     this.root.addEventListener('click', (e) => this.onClick(e));
     this.root.addEventListener('keydown', (e) => e.stopPropagation());
+    // A redraw between press and release would swallow the click: hold redraws while a button is down.
+    this.root.addEventListener('pointerdown', () => (this.pressing = true));
+    window.addEventListener('pointerup', () => (this.pressing = false));
+    window.addEventListener('pointercancel', () => (this.pressing = false));
     parent.append(this.root);
   }
+
+  /** The next draw is the window opening (plays its pop-in). */
+  private opening = false;
+  /** A pointer is down on the window: redraws wait for it to come up. */
+  private pressing = false;
 
   get open(): boolean {
     return this.which !== null;
   }
 
   show(which: WindowKind, view: WindowView): void {
+    if (this.which !== which) this.opening = true;
     this.which = which;
     this.view = view;
     this.key = '';
@@ -208,9 +218,11 @@ export class Windows {
     const tick = Math.floor(view.now / 1000);
     const revealPhase = this.reveal ? (performance.now() - this.reveal.at > 1300 ? 1 : 0) : 0;
     const quiet = this.which === 'racetracks' || this.which === 'save' || this.which === 'offline' || this.which === 'reveal';
-    const key = JSON.stringify([this.which, quiet ? 0 : view.cash, view.tier, view.inventory, view.decorInv, view.cars, view.stock, view.car, view.pass2x, view.boostUntil > view.now, view.giftIn, view.slots, view.code, view.adReady, view.adBusy, this.decorTab, this.garageCar, this.galleryTab, this.rtPage, this.gallery.length, revealPhase, this.infoCrate, view.rebirths, this.which === 'free' ? view.giftIn <= 0 : 0, this.which === 'free' ? view.boostUntil > view.now : 0]);
+    // Nothing that ticks every second belongs here (the gift and restock countdowns are drawn by tickClocks):
+    // a changed key redraws the whole window.
+    const key = JSON.stringify([this.which, quiet ? 0 : view.cash, view.tier, view.inventory, view.decorInv, view.cars, view.stock, view.car, view.pass2x, view.boostUntil > view.now, view.slots, view.code, view.adReady, view.adBusy, this.decorTab, this.garageCar, this.galleryTab, this.rtPage, this.gallery.length, revealPhase, this.infoCrate, view.rebirths, this.which === 'free' ? view.giftIn <= 0 : 0, this.which === 'free' ? view.boostUntil > view.now : 0]);
     void tick;
-    if (key === this.key) {
+    if (key === this.key || (this.pressing && this.key !== '')) {
       this.tickClocks(view);
       return;
     }
@@ -221,6 +233,9 @@ export class Windows {
     const scroll = this.root.querySelector('.rt-wbody')?.scrollTop ?? 0;
     this.key = key;
     this.root.innerHTML = `<div class="rt-dim" data-act="close"></div>${this.html(view)}`;
+    // The pop-in plays once, when the window opens - not on every redraw (cash ticking up redraws a shop each second).
+    if (!this.opening) this.root.querySelector<HTMLElement>('.rt-win')?.classList.add('rt-still');
+    this.opening = false;
     const body = this.root.querySelector('.rt-wbody');
     if (body) body.scrollTop = scroll;
     if (name !== undefined) {
@@ -252,7 +267,7 @@ export class Windows {
   }
 
   private head(title: string, color: string, icon: string, extra = ''): string {
-    return `<div class="rt-whead ${color}"><span class="wic">${icon}</span><h2 class="rt-ol">${escapeHtml(title)}</h2>${extra}${this.view ? `<span class="cash rt-ol">${fmtMoney(this.view.cash)}</span>` : ''}<button class="rt-btn red rt-x" data-act="close"><span class="rt-ol">X</span></button></div>`;
+    return `<div class="rt-whead ${color}"><span class="wic">${icon}</span><h2 class="rt-ol">${escapeHtml(title)}</h2>${extra}${this.view ? `<span class="cash rt-ol">${fmtMoney(this.view.cash)}</span>` : ''}<button class="rt-btn red rt-x" data-act="close" data-tut="close"><span class="rt-ol">X</span></button></div>`;
   }
 
   private html(v: WindowView): string {
@@ -297,7 +312,7 @@ export class Windows {
       return `<div class="rt-row${locked ? ' locked' : ''}" data-tut="shop-${item.key}">${isNew ? '<span class="new rt-ol">New!</span>' : ''}
         <div class="th" style="background-image:url(${thumbs.piece(shape)})">${rarityTag(item.rarity)}</div>
         <div class="info"><b class="rt-ol">${escapeHtml(item.name)}</b><span class="r rt-ol">${fmtMoney(item.rate)}/s</span><span class="st rt-ol">${stock}x Stock</span><span class="bl">${escapeHtml(item.blurb)} · You have ${v.inventory[item.key] ?? 0}</span></div>
-        <div class="buy"><button class="rt-btn lime" data-act="buy" data-kind="track" data-key="${item.key}" data-n="1" ${stock <= 0 || v.cash < item.price ? 'disabled' : ''}><span class="rt-ol">${stock <= 0 ? 'Sold Out' : fmtMoney(item.price)}</span></button>
+        <div class="buy"><button class="rt-btn lime" data-act="buy" data-kind="track" data-key="${item.key}" data-n="1" data-tut="buy-${item.key}" ${stock <= 0 || v.cash < item.price ? 'disabled' : ''}><span class="rt-ol">${stock <= 0 ? 'Sold Out' : fmtMoney(item.price)}</span></button>
         <button class="rt-btn green" data-act="buy" data-kind="track" data-key="${item.key}" data-n="5" ${stock < 2 || v.cash < item.price * Math.min(5, stock) ? 'disabled' : ''} style="height:calc(var(--u)*28);font-size:calc(var(--u)*14)"><span class="rt-ol">Buy ${Math.min(5, Math.max(1, stock))}</span></button></div>
         ${locked ? `<div class="lockov"><span class="ic">${ICONS.lock}</span><span class="rt-ol">Base Upgrade ${item.tier} Required</span></div>` : ''}</div>`;
     }).join('');
@@ -439,7 +454,7 @@ export class Windows {
     return `<div class="rt-win wide">${this.head('Browse Racetracks', 'blue', '🌍')}<div class="rt-wbody"><div class="rt-cols">${side}${main}</div></div></div>`;
   }
 
-  // ---------------------------------------------------------------- Save, Free, Gems
+  // ---------------------------------------------------------------- Save, Free, Packs
 
   private saveWin(v: WindowView): string {
     const slots = Array.from({ length: SAVE_SLOTS }, (_, i) => {
@@ -457,8 +472,14 @@ export class Windows {
     </div></div>`;
   }
 
-  private gemShop(_v: WindowView): string {
-    const rows = GEM_ITEMS.map((g) => `<div class="rt-row"><div class="th" style="display:grid;place-items:center;font-size:calc(var(--u)*40)">${g.kind === 'pass' ? '💸' : g.kind === 'pack' ? '🎁' : '💰'}</div><div class="info"><b class="rt-ol">${escapeHtml(g.name)}</b><span class="bl">${escapeHtml(g.blurb)}</span></div><div class="buy"><button class="rt-btn magenta" data-act="gems" data-key="${g.sku}"><span class="rt-ol">${gem} ${g.gems}</span></button></div></div>`).join('');
+  /** Packs and the 2x Money pass, for in-game cash. */
+  private gemShop(v: WindowView): string {
+    const rows = PACKS.map((g) => {
+      const owned = g.kind === 'pass' && v.pass2x;
+      const locked = v.tier < g.tier;
+      const label = owned ? 'Owned' : locked ? `Base: ${escapeHtml(baseTier(g.tier).name)}` : fmtMoney(g.price);
+      return `<div class="rt-row"><div class="th" style="display:grid;place-items:center;font-size:calc(var(--u)*40)">${g.kind === 'pass' ? '💸' : '🎁'}</div><div class="info"><b class="rt-ol">${escapeHtml(g.name)}</b><span class="bl">${escapeHtml(g.blurb)}</span></div><div class="buy"><button class="rt-btn green" data-act="pack" data-key="${g.sku}" ${owned || locked || v.cash < g.price ? 'disabled' : ''}><span class="rt-ol">${label}</span></button></div></div>`;
+    }).join('');
     return `<div class="rt-win">${this.head('Shop', 'purple', img(UI_IMAGES.shop))}<div class="rt-wbody">${rows}</div></div>`;
   }
 
@@ -541,8 +562,8 @@ export class Windows {
       case 'ad':
         a.watchAd();
         break;
-      case 'gems':
-        a.gems(key);
+      case 'pack':
+        a.pack(key);
         break;
       default:
         return;

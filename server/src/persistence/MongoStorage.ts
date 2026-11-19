@@ -2,8 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MongoClient, type AnyBulkWriteOperation, type Collection, type Document } from 'mongodb';
 import { logger } from '../util/logger.js';
-import { GRANT_LEASE_MS } from './JsonStorage.js';
-import type { DocCollection, ProfileStorage, StoredGrant } from './Storage.js';
+import type { DocCollection, ProfileStorage } from './Storage.js';
 import {
   CLEARABLE_FIELDS,
   coerceProfile,
@@ -19,18 +18,14 @@ const SCOPE = 'persistence';
 const SERVER_SELECTION_MS = 4000;
 /** How often the boot work (indexes, legacy import) is retried while Mongo is down. */
 const BOOT_RETRY_MS = 15_000;
-/** Most grants drained for one account in one go. */
-const CLAIM_LIMIT = 50;
 
 type ProfileDoc = Document & { _id: string };
-type GrantDoc = Document & { _id: string };
 
 /**
  * THE PRODUCTION STORE: the managed MongoDB Legion injects as `MONGODB_URI`,
  * one database per game and channel, the database named in the URI.
  *
- * One document per profile (`profiles`, `_id` = key) and one per purchase
- * (`grants`, `_id` = transaction id). Every write is a per-key `updateOne`
+ * One document per profile (`profiles`, `_id` = key). Every write is a per-key `updateOne`
  * with `$set` and upsert - idempotent, and blind to every field this build
  * does not know - so several pods can share the database without any of them
  * writing back a snapshot another has since changed.
@@ -46,9 +41,7 @@ export class MongoStorage implements ProfileStorage {
 
   private readonly client: MongoClient;
   private readonly profiles: Collection<ProfileDoc>;
-  private readonly grants: Collection<GrantDoc>;
   private readonly puts: WriteQueue<{ fields: ProfileFields; extras: MigrationFields }>;
-  private readonly settles: WriteQueue<number>;
   private readonly docWrites: WriteQueue<{ collection: DocCollection; doc: Record<string, unknown> }>;
   private booted = false;
   private bootTimer: NodeJS.Timeout | null = null;
@@ -67,9 +60,7 @@ export class MongoStorage implements ProfileStorage {
     });
     const db = this.client.db();
     this.profiles = db.collection<ProfileDoc>('profiles');
-    this.grants = db.collection<GrantDoc>('grants');
     this.puts = new WriteQueue('profile', (key, { fields, extras }) => this.writeProfile(key, fields, extras));
-    this.settles = new WriteQueue('grant', (id, appliedAt) => this.writeSettled(id, appliedAt));
     this.docWrites = new WriteQueue('doc', (key, { collection, doc }) => this.writeDoc(collection, key.slice(collection.length + 1), doc));
     logger.info(SCOPE, `mongo store: database "${db.databaseName}"`);
   }
@@ -126,46 +117,6 @@ export class MongoStorage implements ProfileStorage {
     return out;
   }
 
-  async recordGrant(grant: StoredGrant): Promise<'recorded' | 'duplicate'> {
-    const { transactionId, ...rest } = grant;
-    try {
-      await this.grants.insertOne({ _id: transactionId, ...rest });
-      return 'recorded';
-    } catch (error) {
-      if (isDuplicateKey(error)) return 'duplicate';
-      throw error;
-    }
-  }
-
-  /**
-   * Claim grants ONE AT A TIME with an atomic find-and-update, so two pods
-   * asking for the same account in the same instant cannot both take the
-   * same grant. A lease that expired without being applied is retaken.
-   */
-  async claimGrants(accountKey: string, claimedBy: string): Promise<StoredGrant[]> {
-    const claimed: StoredGrant[] = [];
-    while (claimed.length < CLAIM_LIMIT) {
-      const now = Date.now();
-      const doc = await this.grants.findOneAndUpdate(
-        {
-          accountKey,
-          appliedAt: null,
-          $or: [{ claimedAt: null }, { claimedAt: { $lt: now - GRANT_LEASE_MS } }],
-        },
-        { $set: { claimedAt: now, claimedBy } },
-        { returnDocument: 'after' },
-      );
-      if (!doc) break;
-      claimed.push(toGrant(doc));
-    }
-    return claimed;
-  }
-
-  async settleGrants(transactionIds: readonly string[]): Promise<void> {
-    const now = Date.now();
-    await Promise.all(transactionIds.map((id) => this.settles.put(id, now)));
-  }
-
   async getDoc(collection: DocCollection, id: string): Promise<Record<string, unknown> | null> {
     const pending = this.docWrites.peek(`${collection}/${id}`);
     if (pending) return { ...pending.doc };
@@ -197,9 +148,8 @@ export class MongoStorage implements ProfileStorage {
   async flush(timeoutMs = 20_000): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
     const puts = await this.puts.drain(timeoutMs);
-    const settles = await this.settles.drain(Math.max(0, deadline - Date.now()));
     const docs = await this.docWrites.drain(Math.max(0, deadline - Date.now()));
-    return puts && settles && docs;
+    return puts && docs;
   }
 
   async close(): Promise<void> {
@@ -222,10 +172,6 @@ export class MongoStorage implements ProfileStorage {
     await this.profiles.updateOne({ _id: key }, update, { upsert: true });
   }
 
-  private async writeSettled(id: string, appliedAt: number): Promise<void> {
-    await this.grants.updateOne({ _id: id, appliedAt: null }, { $set: { appliedAt } });
-  }
-
   /**
    * Connect, index, and import the legacy JSON file. Retried on a timer while
    * the database is down; never lets an outage stop the process listening.
@@ -235,7 +181,6 @@ export class MongoStorage implements ProfileStorage {
     try {
       await this.client.connect();
       await this.client.db().command({ ping: 1 });
-      await this.grants.createIndex({ accountKey: 1, appliedAt: 1 });
       await this.importLegacy();
       this.booted = true;
       logger.info(SCOPE, 'mongo store: connected');
@@ -290,14 +235,3 @@ export class MongoStorage implements ProfileStorage {
 
 const isDuplicateKey = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
-
-const toGrant = (doc: GrantDoc): StoredGrant => ({
-  transactionId: doc._id,
-  accountKey: String(doc['accountKey'] ?? ''),
-  sku: String(doc['sku'] ?? ''),
-  money: typeof doc['money'] === 'number' ? doc['money'] : 0,
-  createdAt: typeof doc['createdAt'] === 'number' ? doc['createdAt'] : 0,
-  claimedAt: typeof doc['claimedAt'] === 'number' ? doc['claimedAt'] : null,
-  claimedBy: typeof doc['claimedBy'] === 'string' ? doc['claimedBy'] : null,
-  appliedAt: typeof doc['appliedAt'] === 'number' ? doc['appliedAt'] : null,
-});

@@ -17,10 +17,10 @@ rewards: true
 - **rewards: true.** One rewarded ad: **2x Money for 10 minutes** (placement `money-boost`, in the Free window,
   shown only while `Legion.SDK.ads.isAvailable()`). The browser sends the reward token; the server verifies it with
   `POST {BLOXITY_API_URL}/v1/ads/reward/verify` (`server/src/bloxity/adRewards.ts`) and grants only on `valid: true`.
-- **Gems.** Sold in the Shop window and the HUD's pack buttons (`GEM_ITEMS` / `PACK_CONTENTS` in
-  `shared/src/config/racetrack.ts`): `pass_money2`, `first_lap_pack`, `stunt_pack`, `boost_pack`, `cash_small`,
-  `cash_large`. These SKUs must exist in the Bloxity catalogue for slug `build-racetrack`. The webhook records
-  grants (`server/src/progression/BuxGrants.ts`); the room claims them on join and every minute and applies them.
+- **No purchases (no Gems / Bux).** Everything is bought with in-game cash. The Shop window and the HUD's pack
+  buttons sell the 2x Money pass and three packs for cash (`PACKS` / `PACK_CONTENTS` in
+  `shared/src/config/racetrack.ts`, message `BuyPack`, checked by `RaceGame.buyPack`). The game server has no
+  purchase webhook.
 - **Ads.** Ad breaks pause input and mute all audio (`Bloxity.start` -> the `adBreak` host callback in `Game`).
   Rewarded: a non-completed result shows its real status (skipped, no-fill, blocked, denied + reason, disabled, error)
   and is logged. Screen ads: `panel` while a window or the friends list is open, none during play. `ui/AdScreens.ts`

@@ -75,11 +75,4 @@ export const BLOXITY_PORTAL_SLUG = 'build-racetrack';
  */
 export const BLOXITY_HOSTING_ID = 'build-racetrack';
 
-/**
- * The Bux SKUs this game sells (priced in the Bloxity catalogue, never here).
- * Build A Racetrack sells Gems items (see GEM_ITEMS in config/racetrack.ts).
- * The fulfilment webhook refuses any SKU not listed, so a purchase that should
- * not exist is refunded rather than charged. Add a SKU here and grant it in
- * `BuxGrants` when the first product ships.
- */
-export const BUX_SKUS: readonly string[] = [];
+

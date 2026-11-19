@@ -27,15 +27,8 @@ export interface ServerConfig {
   readonly portalSlug: string;
   /** The Legion hosting id (`BLOXITY_GAME_ID`), for logs only. */
   readonly hostingId: string;
-  /** This process, for grant leases and logs. Legion injects `POD_NAME`. */
+  /** This process, for logs. Legion injects `POD_NAME`. */
   readonly podName: string;
-  /**
-   * Shared secret for the Bloxity fulfilment webhook, or '' to accept any.
-   *
-   * Empty by default so a local server needs no configuration. Set it in
-   * production: without one the endpoint grants Wins to anyone who finds it.
-   */
-  readonly buxWebhookSecret: string;
   /**
    * Dev test hooks (teleport, grant gear, force a catch, finish objectives).
    * ON only when the dev script passes --dev-cheats; never on a pod.
@@ -75,6 +68,5 @@ export const serverConfig: ServerConfig = {
   portalSlug: BLOXITY_PORTAL_SLUG,
   hostingId: (process.env['BLOXITY_GAME_ID'] ?? '').trim() || BLOXITY_HOSTING_ID,
   podName: (process.env['POD_NAME'] ?? '').trim() || `${hostname()}:${process.pid}`,
-  buxWebhookSecret: process.env['BLOXITY_WEBHOOK_SECRET'] ?? '',
   devCheats: process.argv.includes('--dev-cheats') && process.env['NODE_ENV'] !== 'production',
 };

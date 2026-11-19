@@ -1,7 +1,7 @@
 import { GROUND_Y, WORLD_BOUNDS } from '../constants/world.js';
 import { CELL, PLOT_UNITS_X, PLOT_UNITS_Z, PLOT_W, TILE, toCanonical, toWorld, type PlotFrame } from '../track/track.js';
 import { GROUND } from '../voxel/blocks.js';
-import { VoxelWorld, type ExtraSolid } from '../voxel/VoxelWorld.js';
+import { VoxelWorld, type Conveyor, type ExtraSolid } from '../voxel/VoxelWorld.js';
 
 /**
  * THE RACEWAY (laid out like the reference): one long two-lane road runs
@@ -184,6 +184,27 @@ const box = (x0: number, z0: number, x1: number, z1: number, h: number, y0 = GRO
 export const CLIFF_Z0 = -200;
 export const CLIFF_Z1 = -186;
 
+/**
+ * THE MOVING WALKWAYS down the middle of the main road, one each way: the
+ * east lane carries you north to the shops and the tunnel, the west lane
+ * south to the spawn plaza. Simulated in `stepBody` (server and client
+ * alike), drawn as escalator treads by the client.
+ */
+export const WALKWAY_SPEED = 6;
+export const WALKWAY_HALF_W = 1.35;
+export const WALKWAYS: readonly { x: number; z0: number; z1: number; dir: 1 | -1 }[] = [
+  { x: 1.75, z0: -174, z1: 160, dir: -1 },
+  { x: -1.75, z0: -174, z1: 160, dir: 1 },
+];
+const CONVEYORS: readonly Conveyor[] = WALKWAYS.map((w) => ({
+  minX: w.x - WALKWAY_HALF_W,
+  maxX: w.x + WALKWAY_HALF_W,
+  minZ: w.z0,
+  maxZ: w.z1,
+  vx: 0,
+  vz: w.dir * WALKWAY_SPEED,
+}));
+
 /** Bodies bump into these (scenery the client draws). */
 export const SCENERY_SOLIDS: readonly ExtraSolid[] = [
   // The cliff, either side of the tunnel.
@@ -221,6 +242,7 @@ export const buildMap = (): VoxelWorld => {
   const { minX, minZ, sizeX, sizeZ } = WORLD_BOUNDS;
   for (let z = minZ; z < minZ + sizeZ; z += 1) for (let x = minX; x < minX + sizeX; x += 1) world.fill(x, 0, z, GROUND);
   for (let i = 0; i < SCENERY_SOLIDS.length; i += 1) world.setExtra(-1 - i, SCENERY_SOLIDS[i]!);
+  world.conveyors = CONVEYORS;
   return world;
 };
 

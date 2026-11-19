@@ -4,7 +4,7 @@ import { JsonStorage } from './JsonStorage.js';
 import { MongoStorage } from './MongoStorage.js';
 import type { ProfileStorage } from './Storage.js';
 
-export type { ProfileStorage, StoredGrant } from './Storage.js';
+export type { ProfileStorage } from './Storage.js';
 export type { MigrationFields, ProfileFields, ProgressFields, StoredProfile } from './StoredProfile.js';
 export { coerceProfile, emptyProgress, hasProgress, progressOf } from './StoredProfile.js';
 

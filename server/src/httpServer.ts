@@ -1,48 +1,11 @@
-import {
-  createServer,
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from 'node:http';
+import { createServer, type Server, type ServerResponse } from 'node:http';
 import { matchMaker } from '@colyseus/core';
-import { BUX_SKUS, ROOM_NAME, isValidAccountId } from '@race/shared';
-import { serverConfig } from './config/serverConfig.js';
+import { ROOM_NAME } from '@race/shared';
 import { storage } from './persistence/index.js';
-import { buxGrants } from './progression/BuxGrants.js';
 import { ALL_ROOMS_PATH, handleAllRooms } from './routes/rooms.js';
 import { logger } from './util/logger.js';
 
-const SCOPE = 'webhook';
-
-/** Bloxity's fulfilment payload. Only the fields this game acts on. */
-interface BuxWebhook {
-  transactionId?: string;
-  userId?: string;
-  username?: string;
-  gameSlug?: string;
-  sku?: string;
-  productName?: string;
-  productPrice?: number;
-  metadata?: Record<string, unknown>;
-  timestamp?: string;
-}
-
-/** Read a JSON body, with a ceiling so a stuck socket cannot grow for ever. */
-const readJson = async (request: IncomingMessage): Promise<BuxWebhook | null> => {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const buffer = chunk as Buffer;
-    size += buffer.length;
-    if (size > 64 * 1024) return null;
-    chunks.push(buffer);
-  }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as BuxWebhook;
-  } catch {
-    return null;
-  }
-};
+const SCOPE = 'http';
 
 /**
  * A plain HTTP server for Colyseus to attach to.
@@ -58,11 +21,6 @@ export const createHttpServer = (): Server =>
       return;
     }
 
-    if (request.url === BUX_WEBHOOK_PATH && request.method === 'POST') {
-      void handleBuxWebhook(request, response);
-      return;
-    }
-
     // Bloxity's store-page "Servers" panel (the catalogue row's allRoomsUrl).
     if (request.method === 'GET' && (request.url ?? '').split('?')[0] === ALL_ROOMS_PATH) {
       void handleAllRooms(request, response);
@@ -72,9 +30,6 @@ export const createHttpServer = (): Server =>
     response.writeHead(404, { 'Content-Type': 'text/plain' });
     response.end('not found');
   });
-
-/** Where Bloxity delivers a paid purchase. */
-export const BUX_WEBHOOK_PATH = '/bloxity/bux';
 
 /**
  * The health probe, and the ONE place a room count is observable from outside.
@@ -108,79 +63,4 @@ const handleHealth = async (response: ServerResponse): Promise<void> => {
 
   response.writeHead(200, { 'Content-Type': 'application/json' });
   response.end(JSON.stringify({ ok: true, room: ROOM_NAME, rooms, players, storage: storage.kind }));
-};
-
-/**
- * Fulfilment, server to server.
- *
- * The ONLY way a Bux purchase becomes something a player owns. The client's
- * `requestPurchase` result is a receipt it can show; it is not a grant, and
- * nothing in the client is trusted to say a payment happened.
- *
- * ANSWERING 2xx IS THE CONTRACT, and it is answered only once the grant is
- * DURABLY RECORDED. Bloxity refunds a purchase whose webhook did not succeed,
- * so this replies 200 for anything it has safely stored - including a SKU
- * this build does not recognise, which is far more likely to be a catalogue
- * that moved ahead of a deploy than an attack, and which a refund would turn
- * into a purchase the player made and lost. A retried webhook for a known
- * transaction is a 200 too, and pays out nothing more.
- *
- * It replies 401 only when a configured secret does not match, 400 only when
- * the body is not something that can be recorded at all, and 503 when the
- * database cannot take the record - the one case where Bloxity SHOULD retry,
- * and will.
- */
-const handleBuxWebhook = async (
-  request: IncomingMessage,
-  response: ServerResponse,
-): Promise<void> => {
-  const reply = (status: number, body: Record<string, unknown>): void => {
-    response.writeHead(status, { 'Content-Type': 'application/json' });
-    response.end(JSON.stringify(body));
-  };
-
-  // The secret is optional so a local server needs no configuration, but if
-  // one IS configured it is enforced - a webhook that accepted anything would
-  // be an endpoint that grants Wins to whoever finds it.
-  const expected = serverConfig.buxWebhookSecret;
-  if (expected) {
-    const supplied = request.headers['x-legion-webhook-secret'];
-    if (supplied !== expected) {
-      logger.warn(SCOPE, 'rejected a webhook with a bad secret');
-      reply(401, { ok: false, error: 'bad secret' });
-      return;
-    }
-  }
-
-  const body = await readJson(request);
-  if (!body?.transactionId || !body.userId || !body.sku) {
-    logger.warn(SCOPE, 'rejected a webhook with no transaction, user or sku');
-    reply(400, { ok: false, error: 'malformed payload' });
-    return;
-  }
-  if (!isValidAccountId(body.userId) || typeof body.transactionId !== 'string' || body.transactionId.length > 128) {
-    logger.warn(SCOPE, 'rejected a webhook with a malformed user or transaction id');
-    reply(400, { ok: false, error: 'malformed payload' });
-    return;
-  }
-
-  // Only SKUs this game actually sells: anything else answers non-2xx, so
-  // Bloxity refunds it instead of charging for something nobody receives.
-  if (!BUX_SKUS.includes(body.sku)) {
-    logger.warn(SCOPE, `rejected unknown sku ${body.sku} [${body.transactionId}] - refunded by Bloxity`);
-    reply(422, { ok: false, error: 'unknown sku' });
-    return;
-  }
-
-  try {
-    const outcome = await buxGrants.record(body.userId, body.transactionId, body.sku);
-    logger.info(
-      SCOPE,
-      `${outcome} ${body.sku} for ${body.username ?? body.userId} [${body.transactionId}]`,
-    );
-    reply(200, { ok: true, transactionId: body.transactionId, duplicate: outcome === 'duplicate' });
-  } catch (error) {
-    logger.error(SCOPE, `could not record ${body.transactionId}; asking Bloxity to retry:`, error);
-    reply(503, { ok: false, error: 'storage unavailable' });
-  }
 };
